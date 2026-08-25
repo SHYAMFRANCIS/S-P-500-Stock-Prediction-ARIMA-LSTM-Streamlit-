@@ -149,10 +149,11 @@ class StockDataCollector:
     """Collects, validates, and caches OHLCV stock data via yfinance."""
 
     def __init__(self, cache_db: str = "stock_cache.db", max_retries: int = 3) -> None:
-        self.cache_db = Path(cache_db)
+        self.cache_db = Path(cache_db) if cache_db != ":memory:" else Path(":memory:")
         self.max_retries = max_retries
+        self._memory_conn: Optional[sqlite3.Connection] = None
         try:
-            if self.cache_db.parent != Path(""):
+            if cache_db != ":memory:" and self.cache_db.parent != Path(""):
                 self.cache_db.parent.mkdir(parents=True, exist_ok=True)
             self._init_cache()
         except sqlite3.Error as exc:
@@ -162,6 +163,9 @@ class StockDataCollector:
         )
 
     def _init_cache(self) -> None:
+        if self.cache_db == Path(":memory:"):
+            # In-memory databases vanish per connection; keep one alive.
+            self._memory_conn = sqlite3.connect(":memory:")
         with self._connect() as conn:
             conn.execute(
                 """
@@ -174,6 +178,8 @@ class StockDataCollector:
             )
 
     def _connect(self) -> sqlite3.Connection:
+        if self._memory_conn is not None:
+            return self._memory_conn
         return sqlite3.connect(str(self.cache_db))
 
     def _download_once(self, ticker: str, period: str, interval: str) -> pd.DataFrame:
