@@ -1,0 +1,122 @@
+name: sp500-prediction
+
+services:
+  # ------------------------------------------------------------------
+  # Main application: Streamlit dashboard
+  # ------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sp500-prediction:latest
+    container_name: sp500-app
+    ports:
+      - "8501:8501"
+    environment:
+      APP_ROLE: dashboard
+      CACHE_DB: /app/data/dashboard_cache.db
+      MODEL_PATH: /app/models
+      REPORTS_DIR: /app/reports
+      RETRAIN_THRESHOLD: "0.05"
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+      TF_CPP_MIN_LOG_LEVEL: "2"
+    volumes:
+      # Persist SQLite cache, trained models and generated reports.
+      - app-data:/app/data
+      - models:/app/models
+      - reports:/app/reports
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Real-time prediction API (FastAPI + WebSocket)
+  # ------------------------------------------------------------------
+  api:
+    image: sp500-prediction:latest
+    container_name: sp500-api
+    command:
+      [
+        "uvicorn",
+        "sp500_stock_prediction.realtime_pipeline:create_app",
+        "--factory",
+        "--host", "0.0.0.0",
+        "--port", "8000"
+      ]
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    environment:
+      APP_ROLE: api
+      CACHE_DB: /app/data/realtime_cache.db
+      MODEL_PATH: /app/models
+      REDIS_URL: redis://redis:6379/0
+      RETRAIN_THRESHOLD: "0.05"
+      TICKERS: "^GSPC,AAPL,MSFT"
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+    volumes:
+      - app-data:/app/data
+      - models:/app/models
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Redis: prediction/cache layer for the API
+  # ------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sp500-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Prometheus: metrics scraping (scrapes the FastAPI /metrics endpoint)
+  # ------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sp500-prometheus
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.path=/prometheus"
+      ]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  models:
+  reports:
+  redis-data:
+  prometheus-data:
+
+networks:
+  internal:
+    driver: bridge

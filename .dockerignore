@@ -1,0 +1,54 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local data — keep the SQLite cache OUT of the image (mounted as a volume)
+data/*.csv
+data/*.parquet
+data/*.xlsx
+!data/cache.db
+
+# Models and reports (volumes, not baked into the image)
+models/
+reports/
+*.pkl
+*.keras
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
+docker/
+
+# Tooling and IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Docs and notebooks not needed at runtime
+*.ipynb
+*.md
+!README.md
+
+# Tests (not required inside the runtime image)
+tests/
