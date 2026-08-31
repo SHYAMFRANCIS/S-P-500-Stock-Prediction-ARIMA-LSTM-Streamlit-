@@ -24,6 +24,55 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+# --- pyarrow DLL blocked fallback (Windows App Control) ---
+# Both st.dataframe and st.table require pyarrow on this env (blocked DLL).
+# Fall back to pure-HTML via st.markdown which does NOT import pyarrow.
+def _render_without_pyarrow(data):  # type: ignore[no-untyped-def]
+    """Render DataFrame/Series without touching pyarrow."""
+    try:
+        if hasattr(data, "to_html"):
+            html = data.to_html(classes="dataframe", border=0)  # type: ignore[attr-defined]
+            return st.markdown(html, unsafe_allow_html=True)
+        return st.text(str(data))
+    except Exception:
+        return st.text(str(data))
+
+
+try:
+    _orig_dataframe = st.dataframe
+    _orig_table = st.table
+
+    def _safe_dataframe(*args, **kwargs):  # type: ignore[no-untyped-def]
+        try:
+            return _orig_dataframe(*args, **kwargs)
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "pyarrow" in msg or "dll" in msg or "application control" in msg or "lib" in msg:
+                kwargs.pop("use_container_width", None)
+                kwargs.pop("hide_index", None)
+                data = args[0] if args else kwargs.pop("data", None)
+                if data is not None:
+                    return _render_without_pyarrow(data)
+                return _render_without_pyarrow(args[0] if args else kwargs)
+            raise
+
+    def _safe_table(*args, **kwargs):  # type: ignore[no-untyped-def]
+        try:
+            return _orig_table(*args, **kwargs)
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "pyarrow" in msg or "dll" in msg or "application control" in msg or "lib" in msg:
+                data = args[0] if args else kwargs.get("data")
+                if data is not None:
+                    return _render_without_pyarrow(data)
+                return _render_without_pyarrow(args[0] if args else kwargs)
+            raise
+
+    st.dataframe = _safe_dataframe  # type: ignore[assignment]
+    st.table = _safe_table  # type: ignore[assignment]
+except Exception:
+    pass
+
 st.set_page_config(
     page_title="S&P 500 Stock Prediction",
     page_icon="📈",

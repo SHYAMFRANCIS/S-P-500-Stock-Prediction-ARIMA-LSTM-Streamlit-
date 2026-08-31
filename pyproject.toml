@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "sp500-stock-prediction"
 version = "0.1.0"
@@ -5,6 +9,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dm-tree>=0.1.10",
     "fastapi>=0.141.1",
     "httpx>=0.28.1",
     "matplotlib>=3.11.1",
@@ -22,6 +27,9 @@ dependencies = [
     "websockets>=16.1.1",
     "yfinance>=1.6.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sp500_stock_prediction"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
